@@ -1,0 +1,6 @@
+DJANGO-RESTFUL
+==============
+
+A set of class-based views, mixins and utilities, which will transparently
+manage serialization, deserialization and other aspects of RESTful resources
+based off a Django site's models.
