@@ -26,7 +26,7 @@ def smart_bool(value):
     """
     if isinstance(value, bool): return value
     if value is None: return False
-    if isinstance(value, basestring): return value and value.lower() != 'false'
+    if isinstance(value, basestring): return bool(value) and value.lower() not in ('false', '0')
     if isinstance(value, Number): return bool(value)
     return False
 
