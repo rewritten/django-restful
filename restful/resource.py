@@ -16,7 +16,7 @@ from restful.codecs import JSONRequestDecoder, XMLRequestDecoder,\
     JSONResponseEncoder, XMLResponseEncoder
 
 
-log = getLogger('webtv.rest.resource')
+log = getLogger('restful.resource')
 
 class RestfulMixin(object):
 
