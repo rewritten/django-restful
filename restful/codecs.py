@@ -85,8 +85,10 @@ class BaseResponseEncoder(object):
 
 
     def dispatch(self, request, *args, **kwargs):
-        self.format = re.sub('^\.+', '', kwargs.get('format', self.get_default_format()))
-        response = super(BaseRequestDecoder, self).dispatch(request, *args, **kwargs)
+        self.format = re.sub(r'^\.+', '', kwargs.get('format') or self.get_default_format())
+        print "format set to %s" % self.format
+        response = super(BaseResponseEncoder, self).dispatch(request, *args, **kwargs)
+        print "got response: %s" % response
         if isinstance(response, basestring):
             return HttpResponse(response)
         elif isinstance(response, HttpResponse):
@@ -113,6 +115,7 @@ class JSONResponseEncoder(BaseResponseEncoder):
 
     def render(self, response):
         if self.format == JSONResponseEncoder.format:
+            print "rendering %s in json" % `response`
             content = simplejson.dumps(response, cls=DateTimeAwareJSONEncoder, ensure_ascii=False, indent=2)
             return HttpResponse(content, mimetype=JSONResponseEncoder.mimetype)
         else:

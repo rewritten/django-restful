@@ -1,10 +1,12 @@
 from django.conf.urls.defaults import *
 
-# Uncomment the next two lines to enable the admin:
-# from django.contrib import admin
-# admin.autodiscover()
+from restful_test_site.testapp.views import *
+
+from django.contrib import admin
+admin.autodiscover()
 
 urlpatterns = patterns('',
+    (r'^users(/(?P<pk>\d+))?(?P<format>\.\w+)?', UserResource.as_view()),
     # Example:
     # (r'^restful_test_site/', include('restful_test_site.foo.urls')),
 
@@ -12,5 +14,5 @@ urlpatterns = patterns('',
     # (r'^admin/doc/', include('django.contrib.admindocs.urls')),
 
     # Uncomment the next line to enable the admin:
-    # (r'^admin/', include(admin.site.urls)),
+    (r'^admin/', include(admin.site.urls)),
 )

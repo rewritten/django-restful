@@ -1,4 +1,10 @@
 # Django settings for restful_test_site project.
+import os
+import sys
+
+# add the parent folder to use the restful lib
+PROJECT_ROOT = os.path.dirname(__file__)
+#sys.path.insert(0, os.path.join(PROJECT_ROOT, ".."))
 
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG

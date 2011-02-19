@@ -34,7 +34,7 @@ class RestfulMixin(object):
     def is_collection(self):
         """ Whether the represented resource is a collection or a single resource """
         if self.singleton:
-            return
+            return False
         return self.kwargs.get('pk') is None \
              and self.kwargs.get('slug') is None
 
@@ -210,7 +210,7 @@ class BaseRestfulResource(RestfulMixin, View):
         """ Adding to the super, use the positional args to allow http_method_names """
         if args:
             initkwargs.update(http_method_names=[m for m in args])
-        return super(RestfulResource, cls).as_view(**initkwargs)
+        return super(BaseRestfulResource, cls).as_view(**initkwargs)
 
 
     def get(self, request, *args, **kwargs):
@@ -262,7 +262,8 @@ class BaseRestfulResource(RestfulMixin, View):
 
 class RestfulResource(JSONRequestDecoder, XMLRequestDecoder,
     JSONResponseEncoder, XMLResponseEncoder, BaseRestfulResource):
-    pass
+    def get_default_format(self):
+        return 'json'
 
 
 

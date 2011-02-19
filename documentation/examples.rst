@@ -33,5 +33,5 @@ How to filter over a boolean field
             ...
         )
 
-Any request containing the parameter `bool_field=` will enable the 
+Any request containing the parameter ``bool_field=`` will enable the 
 corresponding filter.
