@@ -35,7 +35,7 @@ Views
 The RestfulResource class is a generic view, so it can be used as-is in your
 urlconf module:
 
-.. pycode::
+::
 
     urlpatterns = patterns('',
         ('^users(/(?P<pk>\d+))?(?P<format>\.\w+)?,
