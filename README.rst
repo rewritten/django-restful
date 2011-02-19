@@ -11,6 +11,23 @@ or a backport of the relevant classes.
 
 See the documentation for in-depth description of the available options.
 
+Why another Restful lib
+-----------------------
+
+I used to use piston for a number of projects, and I found a couple of
+limitations it its architecture, and other aprts I didn't need at all.
+
+On the other side, Django 1.3 introduces class-based views, and they seem
+to be a more natural candidate to base a restful interface upon. 
+With CBVs, one can cut into any point of the request process, and change
+the behavior.
+
+As an example, in piston it's not possible to use a ValuesQuerySet in a read-object
+request, only in read-collection. With our approach, a subclass may
+override ``get_query_set()`` and still have it applied when getting
+a single object.
+
+
 
 Views
 -----
@@ -18,11 +35,14 @@ Views
 The RestfulResource class is a generic view, so it can be used as-is in your
 urlconf module:
 
-::
+.. pycode::
 
     urlpatterns = patterns('',
-        ('^resource(/(?P<pk>\d+))?(?P<format>\.\w+)?,
-         RestfulResource.as_view(model=User)
+        ('^users(/(?P<pk>\d+))?(?P<format>\.\w+)?,
+            RestfulResource.as_view(model=User)
+        ),
+        ('^posts(/(?P<slug>\d+))?(?P<format>\.\w+)?,
+            RestfulResource.as_view(model=Post)
         ),
         ...
     )
