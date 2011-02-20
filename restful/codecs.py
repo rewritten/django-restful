@@ -5,63 +5,83 @@ Created on Feb 11, 2011
 '''
 from StringIO import StringIO
 from collections import defaultdict
+from xml.etree import ElementTree
+import re
+from django.conf import ConfigurationError
 from django.core.serializers.json import DateTimeAwareJSONEncoder
 from django.http import HttpResponseBadRequest, HttpResponse
 from django.utils import simplejson
 from django.utils.encoding import smart_unicode
 from django.utils.xmlutils import SimplerXMLGenerator
 from restful.utils import serialize
-from xml.etree import ElementTree
-import re
 
 
 class BaseRequestDecoder(object):
-    content_type = None
+    """ The base for request decoder mixins. Subclasses can be mixed together
+    to provide support for multiple content types.
+    """
 
     def decode_postdata(self, request, *args, **kwargs):
-        raise NotImplementedError('This method must be implemented in subclasses')
+        """ Subclasses must implement this method, by checking the compatibility
+        of the request's CONTENT_TYPE with the subclass supported one. In case
+        of a difference the subclass must delegate to another component. 
+        """
+        raise NotImplementedError('The method "decode_postdata()" must be implemented in subclasses')
 
     def dispatch(self, request, *args, **kwargs):
-        """ If the request is POST or PUT, load the postdata into self.data
-        after converting to an object. """
+        """ Load the request data into a dictionary, using any decoder 
+        implemented by subclasses.
+        """
         self.data = None
+        self.request_content_type = request.META.get('CONTENT_TYPE', '').split(';')[0].strip()
         if request.method.lower() in ('put', 'post') and request.POST:
             try:
                 self.data = self.decode_postdata(request)
                 request.POST = dict()
             except NotImplementedError:
-                return HttpResponseBadRequest('Cannot decode POST data of type %s.' % request.META.get('CONTENT_TYPE'))
-            except Exception:
-                return HttpResponseBadRequest('Error parsing data of type %s.' % request.META.get('CONTENT_TYPE'))
+                return HttpResponseBadRequest('Cannot decode POST data of type %s.' % self.request_content_type)
+            except Exception as e:
+                # Any other error is a parsing error
+                return HttpResponseBadRequest('Error parsing data of type %s.' % self.request_content_type)
         return super(BaseRequestDecoder, self).dispatch(request, *args, **kwargs)
 
 
 class DefaultRequestDecoder(BaseRequestDecoder):
-    # By default, no content type will be accepted too
-    content_type = 'application/x-www-form-urlencoded'
+    """ The default request decoder, if used, loads the POST data into
+    a dictionary when the Content-Type header is ot set or is set to
+    form-encoded.
+    
+    The proper QueryDict object from django request is returned, so list-type
+    instances can be retrieved explicitly.
+    """
+    content_types = ['application/x-www-form-urlencoded', '']
     
     def decode_postdata(self, request, *args, **kwargs):
-        if request.META.get('CONTENT_TYPE', 'application/x-www-form-urlencoded').startswith(DefaultRequestDecoder.content_type):
+        if self.request_content_type in DefaultRequestDecoder.content_types:
             return request.POST
         else:
-            return super(JSONRequestDecoder, self).decode_postdata(request, *args, **kwargs)
+            return super(DefaultRequestDecoder, self).decode_postdata(request, *args, **kwargs)
     
 
 class JSONRequestDecoder(BaseRequestDecoder):
-    content_type = 'application/json'
+    """ The JSON request decoder. JSON specifies that there must be a root 
+    object, which is converted to a dictionary.
+    """
+    content_types = ['application/json']
 
     def decode_postdata(self, request, *args, **kwargs):
-        if request.META.get('CONTENT_TYPE', '').startswith(JSONRequestDecoder.content_type):
+        if self.request_content_type in JSONRequestDecoder.content_types:
             return simplejson.load(request)
         else:
             return super(JSONRequestDecoder, self).decode_postdata(request, *args, **kwargs)
 
 
 class XMLRequestDecoder(BaseRequestDecoder):
-    content_type = 'application/xml'
+    # FIXME: This should retrun a dict-like object, not a ElemetTree root.
+    content_types = 'application/xml'
 
     def decode_postdata(self, request, *args, **kwargs):
-        if request.META.get('CONTENT_TYPE', '').startswith(XMLRequestDecoder.content_type):
+        if self.request_content_type in XMLRequestDecoder.content_types:
             root = ElementTree.parse(request).getroot()
             return root
         else:
@@ -71,24 +91,48 @@ class XMLRequestDecoder(BaseRequestDecoder):
 
 
 class BaseResponseEncoder(object):
+    
+    # The mimetype to send along with the response.
     mimetype = None
+    
+    # The 'format' class attribute acts as default serialization format
+    # for instances. If only basic mixins are used, the first mixin determines
+    # the default format. Anyway the subclass can set its own default.
     format = None
-    field_spec_marker = None
-    field_spec = defaultdict()
-    fields = ()
+    
+    # A special request parameter which allows the requested resource to be
+    # serialized into several different forms.
+    fieldset_marker = None
+    
+    # The field resolver object. Subclasses can use the FieldSpec class or a 
+    # simpler defaultdict for fallback behaviour. If the consumer can't
+    # specify a serialization form, set it to just a tuple.
+    fields = tuple() # for fixed serialization
+    # fields = defaultdict(tuple) # for polymorphic serialization
+    
+    def get_fields(self):
+        if self.fieldset_marker and isinstance(self.fields, dict):
+            return self.fields[self.request.GET.get(self.fieldset_marker)]
+        elif isinstance(self.fields, tuple):
+            return self.fields
+        else:
+            raise ConfigurationError("The 'fields' attribute must be either "
+                                "a dict (when 'fieldset_marker' is set) or a "
+                                "tuple.")
 
     def render(self, response):
-        raise NotImplementedError('This method must be implemented in subclasses')
-
-    def get_default_format(self):
-        return None
-
+        raise NotImplementedError('%s extends BaseResponseEncoder but does not '
+                            'implement the render() method. Extend one of '
+                            'BaseResponseEncoder\'s subclasses, setting also '
+                            'a default format, or implement render() '
+                            'directly.' % self.__class__.__name__)
 
     def dispatch(self, request, *args, **kwargs):
-        self.format = re.sub(r'^\.+', '', kwargs.get('format') or self.get_default_format())
-        print "format set to %s" % self.format
+        # if the format has ben specified in the request, overwrite the
+        # the default.
+        if 'format' in kwargs:
+            self.format = kwargs['format'].lstrip('.')
         response = super(BaseResponseEncoder, self).dispatch(request, *args, **kwargs)
-        print "got response: %s" % response
         if isinstance(response, basestring):
             return HttpResponse(response)
         elif isinstance(response, HttpResponse):
@@ -98,29 +142,15 @@ class BaseResponseEncoder(object):
             return self.render(data)
 
 
-    def get_fields(self):
-        if self.field_spec_marker:
-            return self.field_spec[self.request.GET.get(self.field_spec_marker)]
-        else:
-            return self.fields
-
-
-    def get_format(self):
-        return self.format
-
-
 class JSONResponseEncoder(BaseResponseEncoder):
     mimetype = 'application/json'
     format = 'json'
 
     def render(self, response):
-        if self.format == JSONResponseEncoder.format:
-            print "rendering %s in json" % `response`
-            content = simplejson.dumps(response, cls=DateTimeAwareJSONEncoder, ensure_ascii=False, indent=2)
-            return HttpResponse(content, mimetype=JSONResponseEncoder.mimetype)
-        else:
+        if self.format != JSONResponseEncoder.format:
             return super(JSONResponseEncoder, self).render(response)
-
+        content = simplejson.dumps(response, cls=DateTimeAwareJSONEncoder, ensure_ascii=False, indent=2)
+        return HttpResponse(content, mimetype=JSONResponseEncoder.mimetype)
 
 
 
@@ -129,23 +159,17 @@ class XMLResponseEncoder(BaseResponseEncoder):
     format = 'xml'
 
     def render(self, response):
-        if self.format == XMLResponseEncoder.format:
-            stream = StringIO()
-
-            xml = SimplerXMLGenerator(stream, "utf-8")
-            xml.startDocument()
-            xml.startElement("response", {})
-
-            self._to_xml(xml, response)
-
-            xml.endElement("response")
-            xml.endDocument()
-
-            content = stream.getvalue()
-
-            return HttpResponse(content, mimetype=XMLResponseEncoder.mimetype)
-        else:
+        if self.format != XMLResponseEncoder.format:
             return super(XMLResponseEncoder, self).render(response)
+        stream = StringIO()
+        xml = SimplerXMLGenerator(stream, "utf-8")
+        xml.startDocument()
+        xml.startElement("response", {})
+        self._to_xml(xml, response)
+        xml.endElement("response")
+        xml.endDocument()
+        content = stream.getvalue()
+        return HttpResponse(content, mimetype=XMLResponseEncoder.mimetype)
 
 
     def _to_xml(self, xml, data):
